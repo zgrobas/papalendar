@@ -1,5 +1,5 @@
 {
-  "admin": {
+  "admin@grobas.com": {
     "password": "04445e6487736590d1ef50186b414e737e0164683cbbec64e00e73c000fd3bef",
     "name": "Admin",
     "role": "admin",
@@ -8,6 +8,12 @@
   "jl": {
     "password": "d6b12d4a8dd5199f7b7c8ea43a6305d79df9c1b0a80bac2c40b98c78a7febab4",
     "name": "JL",
+    "role": "user",
+    "active": true
+  },
+  "marijuan": {
+    "password": "15e2b0d3c33891ebb0f1ef609ec419420c20e320ce94c65fbc8c3312448eb225",
+    "name": "Mari y Juan",
     "role": "user",
     "active": true
   }
