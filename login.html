@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Papalendar — Acceso</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  height: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #f8f5f0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.login-box {
+  background: #fff;
+  border-radius: 24px;
+  padding: 40px 36px;
+  width: 340px;
+  max-width: 92vw;
+  box-shadow: 0 8px 32px rgba(0,0,0,.08);
+  text-align: center;
+}
+.login-box h1 {
+  font-size: 26px;
+  font-weight: 600;
+  color: #4a4a4a;
+  margin-bottom: 4px;
+}
+.login-box p {
+  font-size: 14px;
+  color: #999;
+  margin-bottom: 28px;
+}
+.login-box label {
+  display: block;
+  text-align: left;
+  font-size: 13px;
+  font-weight: 500;
+  color: #666;
+  margin-bottom: 4px;
+}
+.login-box input {
+  width: 100%;
+  padding: 12px 14px;
+  border: 2px solid #e8e4e0;
+  border-radius: 12px;
+  font-size: 15px;
+  outline: none;
+  transition: border-color .2s;
+  margin-bottom: 16px;
+  background: #faf9f7;
+}
+.login-box input:focus {
+  border-color: #c4b8a8;
+}
+.login-box button {
+  width: 100%;
+  padding: 13px;
+  border: none;
+  border-radius: 14px;
+  background: #c4b8a8;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .2s;
+}
+.login-box button:hover { background: #b0a490; }
+.login-box .error {
+  color: #d46b6b;
+  font-size: 13px;
+  margin-top: 12px;
+  display: none;
+}
+</style>
+</head>
+<body>
+<div class="login-box">
+  <h1>Papalendar</h1>
+  <p>Introduce tus credenciales</p>
+  <form id="loginForm" autocomplete="off">
+    <label for="username">Usuario</label>
+    <input type="text" id="username" name="username" autocomplete="username" required>
+    <label for="password">Contraseña</label>
+    <input type="password" id="password" name="password" autocomplete="current-password" required>
+    <button type="submit">Entrar</button>
+    <div class="error" id="errorMsg">Credenciales incorrectas</div>
+  </form>
+</div>
+<script>
+document.getElementById('loginForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const username = document.getElementById('username').value;
+  const password = document.getElementById('password').value;
+  const errorEl = document.getElementById('errorMsg');
+  try {
+    const r = await fetch('/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    if (r.ok) {
+      const data = await r.json();
+      localStorage.setItem('papalendar_token', data.token);
+      window.location.href = '/';
+    } else {
+      errorEl.style.display = 'block';
+    }
+  } catch (_) {
+    errorEl.style.display = 'block';
+  }
+});
+</script>
+</body>
+</html>

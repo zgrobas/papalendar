@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Papalendar</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="header-left">
+        <button class="btn btn-icon hamburger" id="btn-menu" aria-label="Menú">☰</button>
+        <h1 class="app-title">Papalendar</h1>
+        <span class="app-subtitle">¿Qué horas tengo cubiertas?</span>
+      </div>
+      <div class="header-center">
+        <button class="btn btn-icon" id="btn-prev" aria-label="Anterior">◀</button>
+        <span class="period-label" id="period-label"></span>
+        <button class="btn btn-icon" id="btn-next" aria-label="Siguiente">▶</button>
+        <button class="btn btn-ghost" id="btn-today">Hoy</button>
+      </div>
+      <div class="header-right" id="header-right">
+        <div class="view-toggle" id="view-toggle">
+          <button class="btn btn-toggle" data-view="daily">Día</button>
+          <button class="btn btn-toggle" data-view="weekly">Semana</button>
+          <button class="btn btn-toggle" data-view="monthly">Mes</button>
+        </div>
+        <button class="btn btn-icon" id="btn-refresh" aria-label="Actualizar">↻</button>
+        <button class="btn btn-icon" id="btn-add" aria-label="Añadir evento manual">+</button>
+        <button class="btn btn-icon" id="btn-settings" aria-label="Configuración">⚙</button>
+      </div>
+    </header>
+
+    <!-- Mobile menu dropdown -->
+    <div id="mobile-menu" class="mobile-menu hidden">
+      <div class="mobile-menu-inner">
+        <div class="view-toggle" id="mobile-view-toggle">
+          <button class="btn btn-toggle" data-view="daily">Día</button>
+          <button class="btn btn-toggle" data-view="weekly">Semana</button>
+          <button class="btn btn-toggle" data-view="monthly">Mes</button>
+        </div>
+        <div class="mobile-menu-actions">
+          <button class="btn" id="mobile-btn-refresh">↻ Actualizar</button>
+          <button class="btn btn-primary" id="mobile-btn-add">+ Añadir evento</button>
+          <button class="btn" id="mobile-btn-settings">⚙ Configuración</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Loading -->
+    <div id="loading" class="loading hidden">
+      <div class="spinner"></div>
+      <span>Cargando calendario...</span>
+    </div>
+
+    <!-- Error -->
+    <div id="error" class="error-message hidden"></div>
+
+    <!-- Monthly View -->
+    <div id="monthly-view" class="view">
+      <div class="monthly-grid" id="monthly-grid">
+        <!-- Day name headers -->
+        <div class="day-name-header" data-day="1">Lun</div>
+        <div class="day-name-header" data-day="2">Mar</div>
+        <div class="day-name-header" data-day="3">Mié</div>
+        <div class="day-name-header" data-day="4">Jue</div>
+        <div class="day-name-header" data-day="5">Vie</div>
+        <div class="day-name-header" data-day="6">Sáb</div>
+        <div class="day-name-header" data-day="0">Dom</div>
+        <!-- Day cells rendered by JS -->
+      </div>
+    </div>
+
+    <!-- Weekly View -->
+    <div id="weekly-view" class="view">
+      <div class="weekly-container" id="weekly-container">
+        <!-- Rendered by JS -->
+      </div>
+    </div>
+
+    <!-- Daily View -->
+    <div id="daily-view" class="view">
+      <div class="daily-container" id="daily-container">
+        <!-- Rendered by JS -->
+      </div>
+    </div>
+
+    <!-- Stats row -->
+    <div class="stats-row" id="stats-row">
+      <span id="stats-covered">0</span> horas cubiertas esta semana
+      &middot;
+      <span id="stats-total">0</span> eventos
+    </div>
+
+    <!-- Manual Event Modal -->
+    <div id="modal-add" class="modal-overlay hidden">
+      <div class="modal">
+        <div class="modal-header">
+          <h2>Añadir evento manual</h2>
+          <button class="btn btn-icon modal-close" data-modal="modal-add">&times;</button>
+        </div>
+        <form id="form-add-event">
+          <div class="form-group">
+            <label for="event-title">Título</label>
+            <input type="text" id="event-title" required placeholder="Ej: Reunión equipo" />
+          </div>
+          <div class="form-group">
+            <label for="event-date">Fecha</label>
+            <input type="date" id="event-date" required />
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="event-start">Desde</label>
+              <div class="time-picker" id="event-start">
+                <select id="event-start-h" class="tp-select" required></select>
+                <span class="tp-sep">:</span>
+                <select id="event-start-m" class="tp-select" required></select>
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="event-end">Hasta</label>
+              <div class="time-picker" id="event-end">
+                <select id="event-end-h" class="tp-select" required></select>
+                <span class="tp-sep">:</span>
+                <select id="event-end-m" class="tp-select" required></select>
+              </div>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Color</label>
+            <div class="color-picker" id="color-picker">
+              <label class="color-option selected" style="--c:#B5EAD7">
+                <input type="radio" name="event-color" value="#B5EAD7" checked hidden />
+              </label>
+              <label class="color-option" style="--c:#F4C2C2">
+                <input type="radio" name="event-color" value="#F4C2C2" hidden />
+              </label>
+              <label class="color-option" style="--c:#D5B5EB">
+                <input type="radio" name="event-color" value="#D5B5EB" hidden />
+              </label>
+              <label class="color-option" style="--c:#B5D8EB">
+                <input type="radio" name="event-color" value="#B5D8EB" hidden />
+              </label>
+              <label class="color-option" style="--c:#FAD5B5">
+                <input type="radio" name="event-color" value="#FAD5B5" hidden />
+              </label>
+              <label class="color-option" style="--c:#FDF5B5">
+                <input type="radio" name="event-color" value="#FDF5B5" hidden />
+              </label>
+            </div>
+          </div>
+          <div class="form-actions">
+            <button type="button" class="btn btn-ghost modal-close" data-modal="modal-add">Cancelar</button>
+            <button type="submit" class="btn btn-primary">Añadir evento</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="modal-settings" class="modal-overlay hidden">
+      <div class="modal">
+        <div class="modal-header">
+          <h2>Configuración</h2>
+          <button class="btn btn-icon modal-close" data-modal="modal-settings">&times;</button>
+        </div>
+        <form id="form-settings">
+          <div class="form-group">
+            <label for="ical-url">URL de tu calendario Google</label>
+            <input type="url" id="ical-url" placeholder="https://calendar.google.com/calendar/u/0?cid=..." />
+            <p class="form-help">
+              Pega la URL del calendario público de Google (la que ves en el navegador al abrir el calendario compartido). 
+              La app extrae automáticamente los eventos.
+            </p>
+          </div>
+          <div class="form-group">
+            <label for="ical-file">O sube un archivo .ics directamente</label>
+            <input type="file" id="ical-file" accept=".ics" />
+          </div>
+          <div class="form-actions">
+            <button type="button" class="btn btn-ghost modal-close" data-modal="modal-settings">Cerrar</button>
+            <button type="submit" class="btn btn-primary">Cargar calendario</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Event Detail Modal -->
+    <div id="modal-detail" class="modal-overlay hidden">
+      <div class="modal modal-sm">
+        <div class="modal-header">
+          <h2 id="detail-title"></h2>
+          <button class="btn btn-icon modal-close" data-modal="modal-detail">&times;</button>
+        </div>
+        <div class="modal-body" id="detail-body"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Info banner for first-time users -->
+  <div id="info-banner" class="info-banner hidden">
+    <div class="info-banner-content">
+      <strong>¡Bienvenido a Papalendar!</strong>
+      <p>Pega la URL de tu calendario público de Google (la que ves en el navegador) y verás al instante qué días y horas tienes cubiertos.</p>
+      <p>También puedes añadir eventos manualmente con el botón +.</p>
+      <button class="btn btn-primary" id="btn-banner-start">Configurar calendario</button>
+      <button class="btn btn-ghost" id="btn-banner-dismiss">Empezar sin calendario</button>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

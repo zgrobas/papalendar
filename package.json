@@ -1,0 +1,9 @@
+{
+  "name": "papalendar",
+  "version": "1.0.0",
+  "description": "Calendario visual de horas cubiertas",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "license": "ISC"
+}
