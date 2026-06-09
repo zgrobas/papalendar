@@ -684,6 +684,17 @@ input[type="time"]:focus {
   margin-top: 20px;
 }
 
+/* Header username */
+.header-username {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+@media (max-width: 768px) {
+  .header-username { display: none; }
+}
+
 /* Hamburger menu */
 .hamburger {
   display: none;

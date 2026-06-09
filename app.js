@@ -1083,6 +1083,18 @@ async function init() {
     refreshCalendar()
   })
 
+  // Show username
+  const username = localStorage.getItem('papalendar_user')
+  const nameEl = document.getElementById('header-username')
+  if (username && nameEl) nameEl.textContent = username
+
+  // Logout
+  document.getElementById('btn-logout').addEventListener('click', () => {
+    localStorage.removeItem('papalendar_token')
+    localStorage.removeItem('papalendar_user')
+    window.location.href = '/api/logout'
+  })
+
   // Hamburger menu
   const menuEl = document.getElementById('mobile-menu')
   document.getElementById('btn-menu').addEventListener('click', () => {

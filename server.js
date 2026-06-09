@@ -4,11 +4,10 @@ const path = require('path');
 const url = require('url');
 const crypto = require('crypto');
 
-const DATA_FILE = path.join(__dirname, 'data.json');
+const USERS_FILE = path.join(__dirname, 'users.json');
 const SESSIONS_FILE = path.join(__dirname, '.sessions.json');
 
 const PORT = process.env.PORT || 9090;
-const CREDENTIALS = { username: 'jl', password: 'grobasmato' };
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -21,11 +20,11 @@ const MIME = {
   '.ico': 'image/x-icon',
 };
 
+let users = {};
+try { users = JSON.parse(fs.readFileSync(USERS_FILE, 'utf8')) } catch (_) {}
+
 let sessions = {};
-try {
-  const raw = fs.readFileSync(SESSIONS_FILE, 'utf8');
-  sessions = JSON.parse(raw);
-} catch (_) {}
+try { sessions = JSON.parse(fs.readFileSync(SESSIONS_FILE, 'utf8')) } catch (_) {}
 
 function saveSessions() {
   try { fs.writeFileSync(SESSIONS_FILE, JSON.stringify(sessions)) } catch (_) {}
@@ -49,6 +48,10 @@ function getSession(req) {
   return null;
 }
 
+function dataFileForUser(username) {
+  return path.join(__dirname, `data_${username}.json`);
+}
+
 function send(res, code, mime, data) {
   res.writeHead(code, { 'Content-Type': mime });
   res.end(data);
@@ -68,8 +71,12 @@ function serveFile(res, filePath, alt) {
 
 function isPublic(pathname) {
   const ext = path.extname(pathname)
-  return pathname === '/login.html' || pathname === '/api/login' || pathname === '/api/proxy'
+  return pathname === '/login.html' || pathname === '/api/login' || pathname === '/api/register' || pathname === '/api/proxy'
     || (ext && ext !== '.html')
+}
+
+function hashPassword(pw) {
+  return crypto.createHash('sha256').update(pw).digest('hex');
 }
 
 const server = http.createServer((req, res) => {
@@ -90,7 +97,8 @@ const server = http.createServer((req, res) => {
     req.on('end', () => {
       try {
         const { username, password } = JSON.parse(body);
-        if (username === CREDENTIALS.username && password === CREDENTIALS.password) {
+        const user = users[username];
+        if (user && hashPassword(password) === user.password) {
           const token = crypto.randomBytes(32).toString('hex');
           sessions[token] = { username, createdAt: Date.now() };
           saveSessions();
@@ -98,7 +106,7 @@ const server = http.createServer((req, res) => {
             'Content-Type': 'application/json',
             'Set-Cookie': `session=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000`,
           });
-          res.end(JSON.stringify({ ok: true, token }));
+          res.end(JSON.stringify({ ok: true, token, username, name: user.name }));
         } else {
           send(res, 401, 'application/json', JSON.stringify({ error: 'Credenciales incorrectas' }));
         }
@@ -133,10 +141,17 @@ const server = http.createServer((req, res) => {
     }
   }
 
+  // Current user from session
+  const session = getSession(req);
+  const currentUser = session ? session.username : null;
+
   // ---- API ----
 
+  // Per-user data
   if (pathname === '/api/data' && req.method === 'GET') {
-    fs.readFile(DATA_FILE, 'utf8', (err, data) => {
+    if (!currentUser) { send(res, 401, 'application/json', JSON.stringify({ error: 'No autorizado' })); return }
+    const f = dataFileForUser(currentUser);
+    fs.readFile(f, 'utf8', (err, data) => {
       if (err) {
         send(res, 200, 'application/json', JSON.stringify({ manualEvents: [], eventOverrides: {}, icalUrl: '' }));
         return;
@@ -147,12 +162,13 @@ const server = http.createServer((req, res) => {
   }
 
   if (pathname === '/api/data' && req.method === 'POST') {
+    if (!currentUser) { send(res, 401, 'application/json', JSON.stringify({ error: 'No autorizado' })); return }
     let body = '';
     req.on('data', c => body += c);
     req.on('end', () => {
       try {
         JSON.parse(body);
-        fs.writeFile(DATA_FILE, body, 'utf8', err => {
+        fs.writeFile(dataFileForUser(currentUser), body, 'utf8', err => {
           if (err) {
             send(res, 500, 'application/json', JSON.stringify({ error: err.message }));
             return;
@@ -161,6 +177,39 @@ const server = http.createServer((req, res) => {
         });
       } catch (_) {
         send(res, 400, 'application/json', JSON.stringify({ error: 'Invalid JSON' }));
+      }
+    });
+    return;
+  }
+
+  // Register new user (simple, anyone can register)
+  if (pathname === '/api/register' && req.method === 'POST') {
+    let body = '';
+    req.on('data', c => body += c);
+    req.on('end', () => {
+      try {
+        const { username, password, name } = JSON.parse(body);
+        if (!username || !password || !name) {
+          send(res, 400, 'application/json', JSON.stringify({ error: 'Faltan campos (username, password, name)' }));
+          return;
+        }
+        if (users[username]) {
+          send(res, 409, 'application/json', JSON.stringify({ error: 'El usuario ya existe' }));
+          return;
+        }
+        users[username] = { password: hashPassword(password), name };
+        fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
+        // Auto-login
+        const token = crypto.randomBytes(32).toString('hex');
+        sessions[token] = { username, createdAt: Date.now() };
+        saveSessions();
+        res.writeHead(200, {
+          'Content-Type': 'application/json',
+          'Set-Cookie': `session=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000`,
+        });
+        res.end(JSON.stringify({ ok: true, token, username, name }));
+      } catch (_) {
+        send(res, 400, 'application/json', JSON.stringify({ error: 'Invalid request' }));
       }
     });
     return;
@@ -189,6 +238,13 @@ const server = http.createServer((req, res) => {
 
   serveFile(res, path.join(__dirname, pathname === '/' ? 'index.html' : pathname));
 });
+
+// Migration: copy data.json -> data_jl.json if needed
+const oldData = path.join(__dirname, 'data.json');
+const jlData = path.join(__dirname, 'data_jl.json');
+if (fs.existsSync(oldData) && !fs.existsSync(jlData)) {
+  try { fs.copyFileSync(oldData, jlData); console.log('[migrate] data.json → data_jl.json') } catch (_) {}
+}
 
 server.listen(PORT, () => {
   console.log(`Servidor: http://localhost:${PORT}`);

@@ -80,33 +80,50 @@ html, body {
 <body>
 <div class="login-box">
   <h1>Papalendar</h1>
-  <p>Introduce tus credenciales</p>
+  <p id="loginSubtitle">Introduce tus credenciales</p>
   <form id="loginForm" autocomplete="off">
     <label for="username">Usuario</label>
     <input type="text" id="username" name="username" autocomplete="username" required>
     <label for="password">Contraseña</label>
     <input type="password" id="password" name="password" autocomplete="current-password" required>
-    <button type="submit">Entrar</button>
+    <button type="submit" id="loginBtn">Entrar</button>
     <div class="error" id="errorMsg">Credenciales incorrectas</div>
   </form>
+  <p style="margin-top:20px;font-size:13px;color:#aaa">
+    ¿No tienes cuenta? <a href="#" id="showRegister" style="color:#b0a490;text-decoration:underline">Registrarse</a>
+  </p>
 </div>
 <script>
+let isRegister = false;
+document.getElementById('showRegister').addEventListener('click', e => {
+  e.preventDefault();
+  isRegister = !isRegister;
+  document.getElementById('loginSubtitle').textContent = isRegister ? 'Crea una cuenta nueva' : 'Introduce tus credenciales';
+  document.getElementById('loginBtn').textContent = isRegister ? 'Registrarse' : 'Entrar';
+  document.getElementById('errorMsg').style.display = 'none';
+  document.getElementById('showRegister').textContent = isRegister ? 'Volver a iniciar sesión' : '¿No tienes cuenta? Registrarse';
+});
+
 document.getElementById('loginForm').addEventListener('submit', async e => {
   e.preventDefault();
   const username = document.getElementById('username').value;
   const password = document.getElementById('password').value;
   const errorEl = document.getElementById('errorMsg');
   try {
-    const r = await fetch('/api/login', {
+    const endpoint = isRegister ? '/api/register' : '/api/login';
+    const r = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({ username, password, name: username }),
     });
     if (r.ok) {
       const data = await r.json();
       localStorage.setItem('papalendar_token', data.token);
+      localStorage.setItem('papalendar_user', data.username);
       window.location.href = '/';
     } else {
+      const err = await r.json();
+      errorEl.textContent = err.error || 'Credenciales incorrectas';
       errorEl.style.display = 'block';
     }
   } catch (_) {
