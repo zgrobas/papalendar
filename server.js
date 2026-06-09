@@ -7,7 +7,7 @@ const crypto = require('crypto');
 const DATA_FILE = path.join(__dirname, 'data.json');
 const SESSIONS_FILE = path.join(__dirname, '.sessions.json');
 
-const PORT = 9090;
+const PORT = process.env.PORT || 9090;
 const CREDENTIALS = { username: 'jl', password: 'grobasmato' };
 
 const MIME = {
