@@ -30,6 +30,10 @@ function saveSessions() {
   try { fs.writeFileSync(SESSIONS_FILE, JSON.stringify(sessions)) } catch (_) {}
 }
 
+function saveUsers() {
+  try { fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2)) } catch (_) {}
+}
+
 function parseCookies(req) {
   const c = {};
   (req.headers.cookie || '').split(';').forEach(s => {
@@ -79,6 +83,16 @@ function hashPassword(pw) {
   return crypto.createHash('sha256').update(pw).digest('hex');
 }
 
+function readJSON(path) {
+  try { return JSON.parse(fs.readFileSync(path, 'utf8')) } catch (_) { return null }
+}
+
+function isAdminSession(session) {
+  if (!session) return false;
+  const u = users[session.username];
+  return u && u.role === 'admin' && u.active !== false;
+}
+
 const server = http.createServer((req, res) => {
   const parsed = url.parse(req.url, true);
   const pathname = parsed.pathname;
@@ -98,7 +112,7 @@ const server = http.createServer((req, res) => {
       try {
         const { username, password } = JSON.parse(body);
         const user = users[username];
-        if (user && hashPassword(password) === user.password) {
+        if (user && user.active !== false && hashPassword(password) === user.password) {
           const token = crypto.randomBytes(32).toString('hex');
           sessions[token] = { username, createdAt: Date.now() };
           saveSessions();
@@ -106,7 +120,7 @@ const server = http.createServer((req, res) => {
             'Content-Type': 'application/json',
             'Set-Cookie': `session=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000`,
           });
-          res.end(JSON.stringify({ ok: true, token, username, name: user.name }));
+          res.end(JSON.stringify({ ok: true, token, username, name: user.name, role: user.role || 'user' }));
         } else {
           send(res, 401, 'application/json', JSON.stringify({ error: 'Credenciales incorrectas' }));
         }
@@ -139,15 +153,96 @@ const server = http.createServer((req, res) => {
       }
       return;
     }
+    // Admin role required for admin panel
+    if (pathname === '/admin.html' || pathname === '/admin') {
+      if (!isAdminSession(session)) {
+        send(res, 403, 'text/plain', 'Acceso denegado');
+        return;
+      }
+    }
   }
 
-  // Current user from session
   const session = getSession(req);
   const currentUser = session ? session.username : null;
 
-  // ---- API ----
+  // ---- API: Admin ----
 
-  // Per-user data
+  if (pathname === '/api/admin/users') {
+    if (!isAdminSession(session)) {
+      send(res, 403, 'application/json', JSON.stringify({ error: 'Acceso denegado' }));
+      return;
+    }
+    if (req.method === 'GET') {
+      const list = Object.entries(users).map(([username, u]) => {
+        const data = readJSON(dataFileForUser(username))
+        return {
+          username,
+          name: u.name,
+          role: u.role || 'user',
+          active: u.active !== false,
+          icalUrl: data && data.icalUrl ? data.icalUrl : '',
+        }
+      })
+      send(res, 200, 'application/json', JSON.stringify(list))
+      return
+    }
+    if (req.method === 'POST') {
+      let body = '';
+      req.on('data', c => body += c);
+      req.on('end', () => {
+        try {
+          const { username, password, name } = JSON.parse(body);
+          if (!username || !password || !name) {
+            send(res, 400, 'application/json', JSON.stringify({ error: 'Faltan campos' }));
+            return;
+          }
+          if (users[username]) {
+            send(res, 409, 'application/json', JSON.stringify({ error: 'El usuario ya existe' }));
+            return;
+          }
+          users[username] = { password: hashPassword(password), name, role: 'user', active: true };
+          saveUsers();
+          send(res, 200, 'application/json', JSON.stringify({ ok: true }));
+        } catch (_) {
+          send(res, 400, 'application/json', JSON.stringify({ error: 'Invalid request' }));
+        }
+      });
+      return;
+    }
+  }
+
+  if (pathname.startsWith('/api/admin/users/') && req.method === 'PATCH') {
+    if (!isAdminSession(session)) {
+      send(res, 403, 'application/json', JSON.stringify({ error: 'Acceso denegado' }));
+      return;
+    }
+    const targetUser = pathname.slice('/api/admin/users/'.length);
+    if (!users[targetUser]) {
+      send(res, 404, 'application/json', JSON.stringify({ error: 'Usuario no encontrado' }));
+      return;
+    }
+    let body = '';
+    req.on('data', c => body += c);
+    req.on('end', () => {
+      try {
+        const updates = JSON.parse(body);
+        if (updates.password) {
+          users[targetUser].password = hashPassword(updates.password);
+        }
+        if (updates.active !== undefined) {
+          users[targetUser].active = updates.active;
+        }
+        saveUsers();
+        send(res, 200, 'application/json', JSON.stringify({ ok: true }));
+      } catch (_) {
+        send(res, 400, 'application/json', JSON.stringify({ error: 'Invalid request' }));
+      }
+    });
+    return;
+  }
+
+  // ---- API: User data ----
+
   if (pathname === '/api/data' && req.method === 'GET') {
     if (!currentUser) { send(res, 401, 'application/json', JSON.stringify({ error: 'No autorizado' })); return }
     const f = dataFileForUser(currentUser);
@@ -182,7 +277,6 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // Register new user (simple, anyone can register)
   if (pathname === '/api/register' && req.method === 'POST') {
     let body = '';
     req.on('data', c => body += c);
@@ -197,9 +291,8 @@ const server = http.createServer((req, res) => {
           send(res, 409, 'application/json', JSON.stringify({ error: 'El usuario ya existe' }));
           return;
         }
-        users[username] = { password: hashPassword(password), name };
-        fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
-        // Auto-login
+        users[username] = { password: hashPassword(password), name, role: 'user', active: true };
+        saveUsers();
         const token = crypto.randomBytes(32).toString('hex');
         sessions[token] = { username, createdAt: Date.now() };
         saveSessions();

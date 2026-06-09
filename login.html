@@ -84,6 +84,10 @@ html, body {
   <form id="loginForm" autocomplete="off">
     <label for="username">Usuario</label>
     <input type="text" id="username" name="username" autocomplete="username" required>
+    <div id="nameField" style="display:none">
+      <label for="name">Nombre</label>
+      <input type="text" id="name" name="name" autocomplete="name">
+    </div>
     <label for="password">Contraseña</label>
     <input type="password" id="password" name="password" autocomplete="current-password" required>
     <button type="submit" id="loginBtn">Entrar</button>
@@ -102,6 +106,8 @@ document.getElementById('showRegister').addEventListener('click', e => {
   document.getElementById('loginBtn').textContent = isRegister ? 'Registrarse' : 'Entrar';
   document.getElementById('errorMsg').style.display = 'none';
   document.getElementById('showRegister').textContent = isRegister ? 'Volver a iniciar sesión' : '¿No tienes cuenta? Registrarse';
+  document.getElementById('nameField').style.display = isRegister ? 'block' : '';
+  document.getElementById('name').required = isRegister;
 });
 
 document.getElementById('loginForm').addEventListener('submit', async e => {
@@ -114,13 +120,13 @@ document.getElementById('loginForm').addEventListener('submit', async e => {
     const r = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password, name: username }),
+      body: JSON.stringify({ username, password, name: isRegister ? (document.getElementById('name').value || username) : username }),
     });
     if (r.ok) {
       const data = await r.json();
       localStorage.setItem('papalendar_token', data.token);
       localStorage.setItem('papalendar_user', data.username);
-      window.location.href = '/';
+      window.location.href = data.role === 'admin' ? '/admin.html' : '/';
     } else {
       const err = await r.json();
       errorEl.textContent = err.error || 'Credenciales incorrectas';
