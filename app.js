@@ -1,4 +1,5 @@
 const IS_MOBILE = typeof window !== 'undefined' && window.innerWidth < 768
+let _draggedEventId = null
 
 const state = {
   icalUrl: '',
@@ -302,13 +303,14 @@ async function loadICAL(rawUrl) {
 
   try {
     const icsText = await fetchICS(icalUrl)
-    state.icalEvents = parseICSEvents(icsText)
+    const parsed = parseICSEvents(icsText)
+    mergeICALIntoManual(parsed)
     state.icalUrl = rawUrl
     setLoading(false)
     showBanner(false)
     saveState()
     render()
-    showToast(`✓ ${state.icalEvents.length} eventos cargados`)
+    showToast(`✓ ${parsed.length} eventos importados`)
   } catch (e) {
     setLoading(false)
     setError('Error al conectar: ' + e.message)
@@ -322,13 +324,14 @@ function loadICSFromFile(file) {
   const reader = new FileReader()
   reader.onload = function (e) {
     try {
-      state.icalEvents = parseICSEvents(e.target.result)
+      const parsed = parseICSEvents(e.target.result)
+      mergeICALIntoManual(parsed)
       state.icalUrl = '(archivo local)'
       setLoading(false)
       showBanner(false)
       saveState()
       render()
-      showToast(`Archivo cargado: ${state.icalEvents.length} eventos.`)
+      showToast(`Archivo cargado: ${parsed.length} eventos.`)
       closeModal('modal-settings')
     } catch (err) {
       setLoading(false)
@@ -345,7 +348,34 @@ function loadICSFromFile(file) {
 // ---- Event Queries ----
 
 function getAllEvents() {
-  return [...state.icalEvents, ...state.manualEvents]
+  return state.manualEvents
+}
+
+function mergeICALIntoManual(icalEvents) {
+  const icalIds = new Set()
+  for (const evt of icalEvents) {
+    const uid = evt.id
+    icalIds.add(uid)
+    const existing = state.manualEvents.find(e => e.icalUid === uid)
+    if (existing) {
+      existing.title = evt.title
+      existing.start = evt.start
+      existing.end = evt.end
+    } else {
+      state.manualEvents.push({
+        id: uid,
+        icalUid: uid,
+        title: evt.title,
+        start: evt.start,
+        end: evt.end,
+        color: '#B5EAD7',
+        source: 'manual',
+        description: '',
+        location: '',
+      })
+    }
+  }
+  state.manualEvents = state.manualEvents.filter(e => !e.icalUid || icalIds.has(e.icalUid))
 }
 
 function getEventsForDay(date) {
@@ -562,6 +592,7 @@ function renderWeekly() {
       evHtml += `<div class="ww-ev${isManual ? ' ww-ev-manual' : ''}"
         style="top:${startPct}%;height:${height}%;background:${col}"
         data-event-id="${evt.id}"
+        draggable="${isManual}"
         title="${evt.title} — ${formatTime(evt.start)}–${formatTime(evt.end)}${note ? '\n' + note : ''}">
         <span class="ww-ev-title">${evt.title}</span>
         <span class="ww-ev-time">${formatTime(evt.start)}</span>
@@ -591,21 +622,61 @@ function renderWeekly() {
   // Click events
   container.querySelectorAll('.ww-ev').forEach(el => {
     el.addEventListener('click', function (e) {
+      if (this.draggable && _draggedEventId) return
       e.stopPropagation()
       const id = this.dataset.eventId
       if (id) showEventDetail(id)
     })
   })
 
+  // Drag events
+  container.querySelectorAll('.ww-ev-manual').forEach(el => {
+    el.addEventListener('dragstart', function (e) {
+      _draggedEventId = this.dataset.eventId
+      e.dataTransfer.effectAllowed = 'move'
+      e.dataTransfer.setData('text/plain', _draggedEventId)
+      this.classList.add('ww-ev-dragging')
+    })
+    el.addEventListener('dragend', function () {
+      _draggedEventId = null
+      this.classList.remove('ww-ev-dragging')
+      container.querySelectorAll('.ww-col-drop').forEach(c => c.classList.remove('ww-col-drop'))
+    })
+  })
+
   container.querySelectorAll('.ww-col').forEach(el => {
-    el.addEventListener('click', function (e) {
+    el.addEventListener('dragover', function (e) {
+      if (!_draggedEventId) return
+      e.preventDefault()
+      e.dataTransfer.dropEffect = 'move'
+      this.classList.add('ww-col-drop')
+    })
+    el.addEventListener('dragleave', function () {
+      this.classList.remove('ww-col-drop')
+    })
+    el.addEventListener('drop', function (e) {
+      e.preventDefault()
+      this.classList.remove('ww-col-drop')
+      const eventId = _draggedEventId
+      _draggedEventId = null
+      if (!eventId) return
       const dateStr = this.dataset.date
       if (!dateStr) return
+      const evt = state.manualEvents.find(ev => ev.id === eventId)
+      if (!evt) return
       const rect = this.getBoundingClientRect()
       const y = e.clientY - rect.top
       const hour = Math.min(23, Math.max(0, Math.floor(y / HOUR_HEIGHT)))
-      const date = new Date(dateStr + 'T00:00:00')
-      showNewEvent(date, hour)
+      const minSlot = Math.floor((y % HOUR_HEIGHT) / (HOUR_HEIGHT / 4)) * 15
+      const duration = evt.end - evt.start
+      const newStart = new Date(dateStr + 'T' + String(hour).padStart(2,'0') + ':' + String(minSlot).padStart(2,'0') + ':00')
+      const newEnd = new Date(newStart.getTime() + duration)
+      evt.start = newStart
+      evt.end = newEnd
+      delete evt.icalUid
+      saveState()
+      render()
+      showToast(`"${evt.title}" movido a ${formatTime(newStart)}`)
     })
   })
 
@@ -649,6 +720,7 @@ function renderDaily() {
     evHtml += `<div class="ww-ev${isManual ? ' ww-ev-manual' : ''}"
       style="top:${startPct}%;height:${height}%;background:${col}"
       data-event-id="${evt.id}"
+      draggable="${isManual}"
       title="${evt.title} — ${formatTime(evt.start)}–${formatTime(evt.end)}${note ? '\n' + note : ''}">
       <span class="ww-ev-title">${evt.title}</span>
       <span class="ww-ev-time">${formatTime(evt.start)}</span>
@@ -679,29 +751,63 @@ function renderDaily() {
   // Click events
   container.querySelectorAll('.ww-ev').forEach(el => {
     el.addEventListener('click', function (e) {
+      if (this.draggable && _draggedEventId) return
       e.stopPropagation()
       const id = this.dataset.eventId
       if (id) showEventDetail(id)
     })
   })
 
-  container.querySelectorAll('.ww-col').forEach(el => {
-    el.addEventListener('click', function (e) {
-      const dateStr = this.dataset.date
-      if (!dateStr) return
-      const rect = this.getBoundingClientRect()
-      const y = e.clientY - rect.top
-      const hour = Math.min(23, Math.max(0, Math.floor(y / HOUR_HEIGHT)))
-      const date = new Date(dateStr + 'T00:00:00')
-      showNewEvent(date, hour)
+  // Drag events
+  container.querySelectorAll('.ww-ev-manual').forEach(el => {
+    el.addEventListener('dragstart', function (e) {
+      _draggedEventId = this.dataset.eventId
+      e.dataTransfer.effectAllowed = 'move'
+      e.dataTransfer.setData('text/plain', _draggedEventId)
+      this.classList.add('ww-ev-dragging')
+    })
+    el.addEventListener('dragend', function () {
+      _draggedEventId = null
+      this.classList.remove('ww-ev-dragging')
+      container.querySelectorAll('.ww-col-drop').forEach(c => c.classList.remove('ww-col-drop'))
     })
   })
 
-  // Scroll to 7:00 AM
-  setTimeout(() => {
-    const g = container.querySelector('.ww-grid')
-    if (g) g.scrollTop = Math.round(7 / 24 * TOTAL_HEIGHT)
-  }, 30)
+  container.querySelectorAll('.ww-col').forEach(el => {
+    el.addEventListener('dragover', function (e) {
+      if (!_draggedEventId) return
+      e.preventDefault()
+      e.dataTransfer.dropEffect = 'move'
+      this.classList.add('ww-col-drop')
+    })
+    el.addEventListener('dragleave', function () {
+      this.classList.remove('ww-col-drop')
+    })
+    el.addEventListener('drop', function (e) {
+      e.preventDefault()
+      this.classList.remove('ww-col-drop')
+      const eventId = _draggedEventId
+      _draggedEventId = null
+      if (!eventId) return
+      const dateStr = this.dataset.date
+      if (!dateStr) return
+      const evt = state.manualEvents.find(ev => ev.id === eventId)
+      if (!evt) return
+      const rect = this.getBoundingClientRect()
+      const y = e.clientY - rect.top
+      const hour = Math.min(23, Math.max(0, Math.floor(y / HOUR_HEIGHT)))
+      const minSlot = Math.floor((y % HOUR_HEIGHT) / (HOUR_HEIGHT / 4)) * 15
+      const duration = evt.end - evt.start
+      const newStart = new Date(dateStr + 'T' + String(hour).padStart(2,'0') + ':' + String(minSlot).padStart(2,'0') + ':00')
+      const newEnd = new Date(newStart.getTime() + duration)
+      evt.start = newStart
+      evt.end = newEnd
+      delete evt.icalUid
+      saveState()
+      render()
+      showToast(`"${evt.title}" movido a ${formatTime(newStart)}`)
+    })
+  })
 }
 
 function updateStats() {

@@ -1216,6 +1216,18 @@ input[type="time"]:focus {
   padding: 8px 4px;
 }
 
+/* Drag & Drop */
+.ww-ev-dragging {
+  opacity: 0.5;
+  transform: scaleX(0.95);
+  cursor: grabbing;
+}
+.ww-col-drop {
+  background: #E8F0FE !important;
+  outline: 2px dashed #7AB5D0;
+  outline-offset: -2px;
+}
+
 /* Scrollbar styling */
 .weekly-container::-webkit-scrollbar {
   height: 6px;
